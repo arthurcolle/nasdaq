@@ -2,17 +2,38 @@ use ftp::{FtpStream};
 use polars::prelude::*;
 
 use std::collections::BTreeMap;
+pub fn nasdaq_tickers() -> Vec<String> {
+    return tickers(["nasdaqlisted.txt".to_string()].to_vec(), "Symbol".to_string());
+}
 
-pub fn tickers() -> Vec<String> {
-    // let files = ["nasdaqlisted.txt", "otherlisted.txt", "options.txt"];
-    let files = ["nasdaqtraded.txt"];
+pub fn nyse_tickers() -> Vec<String> {
+    return tickers(["otherlisted.txt".to_string()].to_vec(), "ACT Symbol".to_string());
+}
+
+pub fn all_tickers() -> Vec<String> {
+    let nt = nasdaq_tickers();
+    let ny = nyse_tickers();
+    let mut tickers = nt;
+    tickers.extend(ny);
+    return tickers;
+}
+
+pub fn nasdaqtraded() -> Vec<String> {
+    return tickers(["nasdaqtraded.txt".to_string()].to_vec(), "Symbol".to_string());
+}
+
+pub fn bonds() -> Vec<String> {
+    return tickers(["bondslist.txt".to_string()].to_vec(), "Symbol".to_string());
+}
+
+pub fn tickers(files: Vec<String>, col: String) -> Vec<String> {
     let tickers: Vec<String> = Vec::new();
     for file in files.iter() {
         let mut ftp_stream = FtpStream::connect("ftp.nasdaqtrader.com:21").unwrap_or_else(|err|
             panic!("{}", err)
         );
         
-        // Download  the nasdaqlisted and otherlisted txt files from the directory...
+        // Download the nasdaqlisted and otherlisted txt files from the directory...
         let _ = ftp_stream.login("anonymous", "anonymous").unwrap_or_else(|err|
             panic!("{}", err)
         );
@@ -61,7 +82,10 @@ pub fn tickers() -> Vec<String> {
         // write df to csv
         let mut ofile = std::fs::File::create(format!("{}.csv", file)).unwrap();
         CsvWriter::new(&mut ofile).finish(&mut df).unwrap();
-        let symbols = df.column("Symbol").unwrap().clone();
+        // let good_headers = col_headers.clone().filter(|header| {
+        //     header.contains("Symbol")
+        // });
+        let symbols = df.column(&col).unwrap().clone();
         println!("Symbols: {:?}", symbols);
     }
     return tickers;
@@ -72,8 +96,42 @@ mod tests {
     use super::*;
 
     #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+    fn bonds_test() {
+        let tickers: Vec<String> = bonds();
+        assert!(tickers.contains(&"AAPL42".to_string()));
+    }
+
+    #[test]
+    fn nasdaq_tickers_test() {
+        let tickers = nasdaq_tickers();
+        assert!(tickers.contains(&"AMZN".to_string()));
+        assert!(tickers.contains(&"TSLA".to_string()));
+        assert!(tickers.contains(&"AAPL".to_string()));
+        assert!(tickers.contains(&"ABNB".to_string()));
+    }
+
+    #[test]
+    fn nyse_tickers_test() {
+        let tickers = nyse_tickers();
+        assert!(tickers.contains(&"GS".to_string()));
+        assert!(tickers.contains(&"BRK.A".to_string()));
+        assert!(tickers.contains(&"C".to_string()));
+        assert!(tickers.contains(&"WMT".to_string()));
+    }
+
+    #[test]
+    fn all_tickers_test() {
+        let tickers = all_tickers();
+        assert!(tickers.contains(&"TSLA".to_string()));
+        assert!(tickers.contains(&"ZYXI".to_string()));
+        assert!(tickers.contains(&"GS".to_string()));
+    }
+
+    #[test]
+    fn nasdaq_traded_test() {
+        let tickers = nasdaqtraded();
+        assert!(tickers.contains(&"TSLA".to_string()));
+        assert!(tickers.contains(&"ZYXI".to_string()));
+        assert!(tickers.contains(&"GS".to_string()));
     }
 }
