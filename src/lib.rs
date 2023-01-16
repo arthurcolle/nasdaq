@@ -13,8 +13,7 @@ pub fn nyse_tickers() -> Vec<String> {
 pub fn all_tickers() -> Vec<String> {
     let nt = nasdaq_tickers();
     let ny = nyse_tickers();
-    let mut tickers = nt;
-    tickers.extend(ny);
+    let tickers = ny.into_iter().chain(nt.into_iter()).collect();
     return tickers;
 }
 
@@ -63,7 +62,7 @@ pub fn tickers(files: Vec<String>, col: String) -> Vec<String> {
         
         data.into_iter().for_each(|row| {
             col_headers.clone().zip(row).for_each(|(header, data)| {
-                col_data.get_mut(header).unwrap().push(data.to_string());
+                col_data.get_mut(header).unwrap().push(data.replace("\\", "").replace("\"", "").to_string());
             });
 
             // let row = row.collect::<Vec<&str>>();
@@ -79,13 +78,22 @@ pub fn tickers(files: Vec<String>, col: String) -> Vec<String> {
         }).collect();
 
         let mut df = DataFrame::new(vecs).unwrap();
+        println!("DataFrame length is {}...", df.height());
+        println!("DataFrame last row is {:?}", df.get_row(df.height() - 1).unwrap());
+        // first 15 rows shown without head
+        println!("DataFrame first 15 rows are {:?}", df);
+
         // write df to csv
         let mut ofile = std::fs::File::create(format!("{}.csv", file)).unwrap();
         CsvWriter::new(&mut ofile).finish(&mut df).unwrap();
         // let good_headers = col_headers.clone().filter(|header| {
         //     header.contains("Symbol")
         // });
-        let symbols = df.column(&col).unwrap().clone();
+        let symbols = df.column(&col).unwrap().clone().into_frame();
+        // turn symbols DataFrame into Vec<String> without using into_iter()
+        
+        let symbols = symbols.column(&col).unwrap().clone().iter().map(|x| x.to_string()).collect::<Vec<String>>();
+
         println!("Symbols: {:?}", symbols);
     }
     return tickers;
@@ -104,6 +112,7 @@ mod tests {
     #[test]
     fn nasdaq_tickers_test() {
         let tickers = nasdaq_tickers();
+        println!("{:?}", tickers);
         assert!(tickers.contains(&"AMZN".to_string()));
         assert!(tickers.contains(&"TSLA".to_string()));
         assert!(tickers.contains(&"AAPL".to_string()));
