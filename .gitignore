@@ -2,3 +2,7 @@ stochastic.py
 /csv
 /target
 /Cargo.lock
+nasdaqlisted.txt.csv
+options.csv
+options.txt.csv
+otherlisted.txt.csv

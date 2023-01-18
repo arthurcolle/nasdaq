@@ -54,50 +54,12 @@ pub fn nasdaqtraded() -> Vec<String> {
     return tickers("nasdaqtraded.txt".to_string(), "Symbol".to_string());
 }
 
-// pub fn bonds() -> Vec<String> {
-//   return tickers("bondslist.txt".to_string(), "Symbol".to_string());
-//}
-
+pub fn bonds() -> Vec<String> {
+    return tickers("bondslist.txt".to_string(), "Symbol".to_string());
+}
 
 pub fn all_options() -> DataFrame {
     let mut options = tickers_df("options.txt".to_string());
-    options.add_column("oid", &[1]);
-
-    // let n: u32 = 0b11110000;
-    // 0 indicates pad with zeros
-    // 8 is the target width
-    // b indicates to format as binary
-    // let formatted = format!("{:08b}", n);
-    // options.add_column("Formatted Strike Price", &[
-    //     options.column("Explicit Strike Price").unwrap().to_vec().map(|x: &f64| format!("{:08b}", x)).to_series()
-    // ]).unwrap();
-    // println!("{:#?}", options);
-
-    // options.add_column("oid", &[
-    //     options.column("Root Symbol").unwrap(), 
-    //     options.column("Expiration Date").unwrap().map(|xd: &Timestamp| {
-    //         let xd = xd.date();
-    //         format!("{:02}{:02}{:02}", xd.year() % 100, xd.month(), xd.day())
-    //     }), 
-    //     options.column("Options Type").unwrap(),
-    //     options.column("Formatted Strike Price").unwrap().map(|x: &f64| x.trunc().to_string())
-    // ]).unwrap();
-
-    // let options_final = options.add_column("oid", &[
-    //     options.column("Root Symbol"), 
-    //     options.column("Expiration Date").map(|xd: &Timestamp| {
-    //         let xd = xd.date();
-    //         format!("{:02}{}{:02}", xd.year() % 100, xd.month(), xd.day())
-    //     }), 
-    //     options.column("Options Type"), 
-    //     options.column("Formatted Strike Price").map(|x: &f64| x.trunc().to_string())
-    // ]);
-
-    // write new options file to a new file called options_oids.csv
-
-    // add a new column called abc where every row is 1
-    options.add_column("help", &[1]).unwrap();
-
 
     let mut ofile = std::fs::File::create("options.csv").unwrap();
     CsvWriter::new(&mut ofile).finish(&mut options.clone()).unwrap();
@@ -216,11 +178,11 @@ pub fn tickers(file: String, col: String) -> Vec<String> {
 mod tests {
     use super::*;
 
-    //#[test]
-    //fn bonds_test() {
-    //    let tickers: Vec<String> = bonds();
-    //    println!("{:#?}", tickers);
-    //}
+    #[test]
+    fn bonds_test() {
+        let tickers: Vec<String> = bonds();
+        println!("{:#?}", tickers);
+    }
 
     #[test]
     fn nasdaq_tickers_test() {
