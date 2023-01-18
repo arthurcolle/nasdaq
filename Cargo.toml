@@ -4,11 +4,13 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+alphavantage = "0.7.0"
 color-eyre = "0.6.2"
 csv = "1.1.6"
 ftp = { version = "3.0.1" }
 graplot = "0.1.22"
-polars = { version = "0.26.1", features = ["lazy", "csv-file", "strings", "temporal", "dtype-duration", "dtype-categorical", "concat_str", "rank", "lazy_regex"] }
+polars = { version = "0.26.1", features = ["lazy", "csv-file", "strings", "temporal", "dtype-duration", "dtype-categorical", "concat_str", "rank", "lazy_regex", "rows", "polars-lazy", "algo", "search_sorted", "serde", "serde-lazy", "rolling_window", "true_div", "streaming", "sql", "random", "product", "propagate_nans", "performant", "pivot", "top_k", "cum_agg", "sort_multiple"] }
 rand = "0.8.5"
 reqwest = "0.11.13"
+tokio-postgres = "0.7.7"
 yahoo-finance = "0.3.0"
