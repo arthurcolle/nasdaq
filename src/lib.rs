@@ -16,22 +16,26 @@ enum SymbolType {
     Nasdaq
 }
 
-// struct Ticker {
-//     symbols: BTreeMap<SymbolType, String>,
-//     description: String,
-//     exchange: Exchange,
-//     etf: bool,
-//     active: bool,
-//     test: bool,
-// }
-
 struct Ticker {
     symbol: String,
-    description: String,
-    exchange: Exchange,
-    etf: bool,
-    active: bool,
-    test: bool,
+    description: Option<String>,
+    exchange: Option<Exchange>,
+    etf: Option<bool>,
+    active: Option<bool>,
+    test: Option<bool>,
+}
+
+impl Ticker {
+    fn new(symbol: String, description: String, exchange: Exchange, etf: bool, active: bool, test: bool) -> Ticker {
+        Ticker {
+            symbol,
+            description,
+            exchange,
+            etf,
+            active,
+            test,
+        }
+    }
 }
 
 use std::collections::BTreeMap;
@@ -66,7 +70,6 @@ pub fn all_options() -> DataFrame {
     println!("Wrote options_oids.csv");
     return options;
 }
-
 
 pub fn tickers_df(file: String) -> DataFrame {
     let response: Vec<String> = Vec::new();
@@ -180,8 +183,8 @@ mod tests {
 
     #[test]
     fn bonds_test() {
-        let tickers: Vec<String> = bonds();
-        println!("{:#?}", tickers);
+        let bonds: Vec<String> = bonds();
+        println!("{:#?}", bonds);
     }
 
     #[test]
