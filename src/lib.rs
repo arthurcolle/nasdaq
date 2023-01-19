@@ -26,7 +26,7 @@ struct Ticker {
 }
 
 impl Ticker {
-    fn new(symbol: String, description: String, exchange: Exchange, etf: bool, active: bool, test: bool) -> Ticker {
+    fn new(symbol: String, description: Option<String>, exchange: Option<Exchange>, etf: Option<bool>, active: Option<bool>, test: Option<bool>) -> Ticker {
         Ticker {
             symbol,
             description,
