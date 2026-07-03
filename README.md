@@ -92,6 +92,20 @@ let book = bb.book("AAPL").unwrap();
 let stats = &bb.stats["AAPL"];
 ```
 
+## Performance
+
+Synthetic 1M-message session, M2 Max (`cargo bench`):
+
+| Path | Throughput |
+|---|---|
+| Parse (framed reader) | ~25M msg/s |
+| Parse (unframed, direct) | ~41M msg/s |
+| Full replay, all symbols (book build) | ~2.4M msg/s |
+| Filtered replay, one symbol | ~12.6M msg/s |
+
+A full trading day (~400M messages) replays in a few minutes; single-symbol
+studies run in well under a minute.
+
 ## Tests
 
 ```sh

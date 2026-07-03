@@ -25,3 +25,7 @@ ureq = "3"
 [profile.release]
 lto = "thin"
 strip = true
+
+[[bench]]
+name = "replay"
+harness = false
