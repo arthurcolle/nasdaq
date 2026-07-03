@@ -423,10 +423,11 @@ impl Orderbook {
                 }
             }
         }
-        if let (Some(b), Some(a)) = (self.best_bid(), self.best_ask())
-            && b.price.0 >= a.price.0
-        {
-            return Err(format!("book crossed: bid {:?} >= ask {:?}", b.price, a.price));
+        match (self.best_bid(), self.best_ask()) {
+            (Some(b), Some(a)) if b.price.0 >= a.price.0 => {
+                return Err(format!("book crossed: bid {:?} >= ask {:?}", b.price, a.price));
+            }
+            _ => {}
         }
         Ok(())
     }
