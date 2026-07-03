@@ -1,22 +1,118 @@
-// import library from lib.rs
-extern crate nasdaq;
-use polars::frame::DataFrame;
+use std::process::ExitCode;
 
-fn main() {
-    // call function from lib.rs
-    let nasdaq_tkrs: Vec<String> = nasdaq::nasdaq_tickers();
-    let nyse_tkrs: Vec<String> = nasdaq::nyse_tickers();
+use clap::{Parser, Subcommand, ValueEnum};
+use nasdaq::{Client, DirectoryFile, Transport};
 
-    // combine nasaq and nyse tickers
-    let combined_tickers: Vec<String> = nyse_tkrs.to_vec().into_iter().chain(nasdaq_tkrs.into_iter()).collect();
-    println!("<Tickers, sep=\" \">");
-    for ticker in combined_tickers {
-      // no new line after each ticker
-      print!("{} ", ticker);
+#[derive(Parser)]
+#[command(name = "nasdaq", version, about = "Nasdaq Trader symbol directory client")]
+struct Cli {
+    /// Transport: auto (FTP with HTTPS fallback), ftp, or https
+    #[arg(long, value_enum, default_value_t = TransportArg::Auto)]
+    transport: TransportArg,
+
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum TransportArg {
+    Auto,
+    Ftp,
+    Https,
+}
+
+impl From<TransportArg> for Transport {
+    fn from(t: TransportArg) -> Self {
+        match t {
+            TransportArg::Auto => Transport::Auto,
+            TransportArg::Ftp => Transport::Ftp,
+            TransportArg::Https => Transport::Https,
+        }
     }
-    println!("</Tickers>");
-    println!("<Options>");
-    let option_vec: DataFrame = nasdaq::all_options();
-    println!("{:#?}", option_vec);
-    println!("</Options>");
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum FileArg {
+    NasdaqListed,
+    OtherListed,
+    NasdaqTraded,
+    Bonds,
+    Options,
+    MutualFunds,
+}
+
+impl From<FileArg> for DirectoryFile {
+    fn from(f: FileArg) -> Self {
+        match f {
+            FileArg::NasdaqListed => DirectoryFile::NasdaqListed,
+            FileArg::OtherListed => DirectoryFile::OtherListed,
+            FileArg::NasdaqTraded => DirectoryFile::NasdaqTraded,
+            FileArg::Bonds => DirectoryFile::Bonds,
+            FileArg::Options => DirectoryFile::Options,
+            FileArg::MutualFunds => DirectoryFile::MutualFunds,
+        }
+    }
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// Print symbols, one per line
+    Tickers {
+        /// Which directory file to read symbols from
+        #[arg(long, value_enum, default_value_t = FileArg::NasdaqTraded)]
+        file: FileArg,
+    },
+    /// Print combined Nasdaq-listed + other-listed symbols
+    All,
+    /// Fetch a directory file and write it as CSV
+    Fetch {
+        #[arg(value_enum)]
+        file: FileArg,
+        /// Output CSV path (defaults to <file>.csv)
+        #[arg(long, short)]
+        out: Option<String>,
+    },
+}
+
+fn main() -> ExitCode {
+    let cli = Cli::parse();
+    match run(cli) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("error: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn run(cli: Cli) -> nasdaq::Result<()> {
+    let client = Client::with_transport(cli.transport.into());
+    match cli.command {
+        Command::Tickers { file } => {
+            let file: DirectoryFile = file.into();
+            for s in client.symbols(file)? {
+                println!("{s}");
+            }
+        }
+        Command::All => {
+            for s in client.symbols(DirectoryFile::OtherListed)? {
+                println!("{s}");
+            }
+            for s in client.symbols(DirectoryFile::NasdaqListed)? {
+                println!("{s}");
+            }
+        }
+        Command::Fetch { file, out } => {
+            let file: DirectoryFile = file.into();
+            let table = client.fetch(file)?;
+            let path = out.unwrap_or_else(|| format!("{}.csv", file.file_name()));
+            table.write_csv(&path)?;
+            eprintln!(
+                "wrote {path}: {} rows x {} cols",
+                table.rows.len(),
+                table.headers.len()
+            );
+        }
+    }
+    Ok(())
 }
