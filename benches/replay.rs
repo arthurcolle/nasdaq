@@ -22,7 +22,7 @@ fn synth_session(n: usize) -> Vec<u8> {
     };
     let mut ns: u64 = 34_200_000_000_000;
 
-    let mut push = |out: &mut Vec<u8>, body: &[u8]| {
+    let push = |out: &mut Vec<u8>, body: &[u8]| {
         out.extend((body.len() as u16).to_be_bytes());
         out.extend(body);
     };
