@@ -92,6 +92,18 @@ let book = bb.book("AAPL").unwrap();
 let stats = &bb.stats["AAPL"];
 ```
 
+## Validation
+
+Replays Nasdaq's official full-session sample files (`emi.nasdaq.com/ITCH/Nasdaq ITCH/`)
+without errors:
+
+> **01302020.NASDAQ_ITCH50.gz — 423,285,709 messages, 0 parse errors** (~7 min
+> including gzip decompression, single core, M2 Max; peak RSS 0.6 GB with
+> full multi-symbol book building)
+
+End-of-day books are empty as expected (session close purges all orders);
+add ≈ execute + delete counts reconcile per symbol.
+
 ## Performance
 
 Synthetic 1M-message session, M2 Max (`cargo bench`):
