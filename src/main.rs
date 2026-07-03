@@ -1,5 +1,3 @@
-use std::fs::File;
-use std::io::BufReader;
 use std::process::ExitCode;
 use std::time::Duration;
 
@@ -85,7 +83,7 @@ enum Command {
     },
     /// Replay an ITCH 5.0 file and print per-symbol stats + top-of-book
     Itch {
-        /// Path to a length-framed ITCH 5.0 file (*.NASDAQ_ITCH50)
+        /// Path to a length-framed ITCH 5.0 file (*.NASDAQ_ITCH50[.gz])
         path: String,
         /// Restrict to one symbol (much lower memory on full sessions)
         #[arg(long, short)]
@@ -155,8 +153,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                 Some(s) => BookBuilder::for_symbol(s.to_uppercase()),
                 None => BookBuilder::new(),
             };
-            let f = File::open(&path)?;
-            let n = bb.replay(BufReader::new(f))?;
+            let n = bb.replay(nasdaq::itch::open_session(&path)?)?;
             eprintln!("replayed {n} messages from {path}");
 
             let mut ranked: Vec<_> = bb.stats.iter().collect();

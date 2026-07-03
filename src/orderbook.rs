@@ -127,9 +127,13 @@ impl Orderbook {
     }
 
     fn alloc_id(&mut self) -> u64 {
-        let id = self.next_id;
-        self.next_id = self.next_id.max(id) + 1;
-        id
+        loop {
+            let id = self.next_id;
+            self.next_id += 1;
+            if !self.orders.contains_key(&id) {
+                return id;
+            }
+        }
     }
 
     /// Number of live orders.
@@ -147,6 +151,11 @@ impl Orderbook {
     // ---------------------------------------------------------------
 
     /// Insert a resting order with a caller-assigned id (no matching).
+    ///
+    /// Caller-assigned ids share one id space with engine-allocated ids from
+    /// [`Orderbook::limit`]. Inserting id N advances the internal allocator
+    /// past N, but if you mix both styles, keep caller ids in a disjoint
+    /// (e.g. high) range to avoid collisions with previously allocated ids.
     pub fn insert(&mut self, id: u64, side: Side, price: Price, qty: u64) -> Result<(), BookError> {
         if qty == 0 {
             return Err(BookError::ZeroQuantity);
@@ -385,6 +394,42 @@ impl Orderbook {
     pub fn depth(&self) -> (usize, usize) {
         (self.bids.len(), self.asks.len())
     }
+
+    /// Verify internal consistency: every level's total equals the sum of its
+    /// orders' quantities, every queued id exists, and the passive book is not
+    /// crossed. Cheap enough for debug assertions in replay loops.
+    pub fn check_invariants(&self) -> Result<(), String> {
+        for (side_name, book) in [("bid", &self.bids), ("ask", &self.asks)] {
+            for (price, level) in book {
+                let mut sum = 0u64;
+                for id in &level.ids {
+                    let order = self
+                        .orders
+                        .get(id)
+                        .ok_or_else(|| format!("{side_name} level {price:?} references unknown order {id}"))?;
+                    if order.price != *price {
+                        return Err(format!("order {id} price {:?} != level {price:?}", order.price));
+                    }
+                    sum += order.qty;
+                }
+                if sum != level.total_qty {
+                    return Err(format!(
+                        "{side_name} level {price:?} total {} != sum of orders {sum}",
+                        level.total_qty
+                    ));
+                }
+                if level.ids.is_empty() {
+                    return Err(format!("{side_name} level {price:?} is empty but present"));
+                }
+            }
+        }
+        if let (Some(b), Some(a)) = (self.best_bid(), self.best_ask())
+            && b.price.0 >= a.price.0
+        {
+            return Err(format!("book crossed: bid {:?} >= ask {:?}", b.price, a.price));
+        }
+        Ok(())
+    }
 }
 
 /// Microstructure analytics over an [`Orderbook`].
@@ -554,6 +599,90 @@ mod tests {
             ob.limit(Side::Bid, Price(1), 0),
             Err(BookError::ZeroQuantity)
         ));
+    }
+
+    #[test]
+    fn invariants_hold_under_random_ops() {
+        // Deterministic xorshift so the test is reproducible without rand dep.
+        let mut state = 0x2545F4914F6CDD1Du64;
+        let mut rng = move || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        let mut ob = Orderbook::new();
+        let mut live: Vec<u64> = Vec::new();
+        // Caller-assigned ids in a high range so they never collide with
+        // engine-allocated resting-order ids (see insert() docs).
+        let mut next_id = 1_000_000_000u64;
+        for i in 0..20_000 {
+            match rng() % 100 {
+                0..=44 => {
+                    next_id += 1;
+                    while ob.order(next_id).is_some() {
+                        next_id += 1;
+                    }
+                    let side = if rng() % 2 == 0 { Side::Bid } else { Side::Ask };
+                    // keep sides in non-crossing bands so passive inserts stay sane
+                    let price = match side {
+                        Side::Bid => Price(9_000 + (rng() % 900) as i64),
+                        Side::Ask => Price(10_000 + (rng() % 900) as i64),
+                    };
+                    let qty = 1 + rng() % 500;
+                    ob.insert(next_id, side, price, qty).unwrap();
+                    live.push(next_id);
+                }
+                45..=64 => {
+                    if !live.is_empty() {
+                        let id = live[(rng() % live.len() as u64) as usize];
+                        let _ = ob.reduce(id, 1 + rng() % 200);
+                        if ob.order(id).is_none() {
+                            live.retain(|&x| x != id);
+                        }
+                    }
+                }
+                65..=79 => {
+                    if !live.is_empty() {
+                        let idx = (rng() % live.len() as u64) as usize;
+                        let id = live.swap_remove(idx);
+                        let _ = ob.cancel(id);
+                    }
+                }
+                80..=89 => {
+                    let side = if rng() % 2 == 0 { Side::Bid } else { Side::Ask };
+                    let price = match side {
+                        Side::Bid => Price(9_500 + (rng() % 1_000) as i64),
+                        Side::Ask => Price(9_400 + (rng() % 1_000) as i64),
+                    };
+                    if let Ok(exec) = ob.limit(side, price, 1 + rng() % 300) {
+                        for f in &exec.fills {
+                            if ob.order(f.maker_id).is_none() {
+                                live.retain(|&x| x != f.maker_id);
+                            }
+                        }
+                        if let Some(id) = exec.resting_id {
+                            live.push(id);
+                        }
+                    }
+                }
+                _ => {
+                    let side = if rng() % 2 == 0 { Side::Bid } else { Side::Ask };
+                    if let Ok(exec) = ob.market(side, 1 + rng() % 300) {
+                        for f in &exec.fills {
+                            if ob.order(f.maker_id).is_none() {
+                                live.retain(|&x| x != f.maker_id);
+                            }
+                        }
+                    }
+                }
+            }
+            if i % 1_000 == 0 {
+                ob.check_invariants().unwrap_or_else(|e| panic!("iter {i}: {e}"));
+            }
+        }
+        ob.check_invariants().unwrap();
+        assert_eq!(ob.order_count(), live.len());
     }
 
     #[test]

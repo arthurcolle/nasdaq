@@ -11,7 +11,9 @@
 //! replay never desyncs (framing carries the length).
 
 use std::collections::HashMap;
-use std::io::{self, Read};
+use std::fs::File;
+use std::io::{self, BufReader, Read};
+use std::path::Path;
 
 use serde::Serialize;
 use thiserror::Error;
@@ -379,6 +381,21 @@ impl<R: Read> Iterator for Reader<R> {
     }
 }
 
+/// Open an ITCH session file for replay, transparently decompressing
+/// `.gz` files when the `gz` feature is enabled (it is by default).
+pub fn open_session(path: impl AsRef<Path>) -> Result<Box<dyn Read>, ItchError> {
+    let path = path.as_ref();
+    let file = File::open(path)?;
+    #[cfg(feature = "gz")]
+    if path.extension().is_some_and(|e| e == "gz") {
+        return Ok(Box::new(BufReader::with_capacity(
+            1 << 20,
+            flate2::read::GzDecoder::new(BufReader::with_capacity(1 << 20, file)),
+        )));
+    }
+    Ok(Box::new(BufReader::with_capacity(1 << 20, file)))
+}
+
 /// Per-symbol book statistics accumulated during replay.
 #[derive(Debug, Default, Clone, Serialize)]
 pub struct SymbolStats {
@@ -637,6 +654,10 @@ mod tests {
         // MSFT book exists but is empty after delete
         let msft = bb.book("MSFT").unwrap();
         assert_eq!(msft.depth(), (0, 0));
+
+        for (_, book) in bb.books() {
+            book.check_invariants().unwrap();
+        }
 
         let st = &bb.stats["AAPL"];
         assert_eq!(st.adds, 2);
