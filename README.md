@@ -1,10 +1,15 @@
 # nasdaq
 
-Rust client for the [Nasdaq Trader symbol directory](https://www.nasdaqtrader.com/trader.aspx?id=symboldirdefs):
-ticker universes, bonds, options, and mutual funds — plus a small price-level orderbook.
+Nasdaq market-structure toolkit in Rust:
 
-Fetches over anonymous FTP (`ftp.nasdaqtrader.com/symboldirectory`) with automatic
-HTTPS fallback. No API key required; this is public data.
+- **Symbol directory client** — ticker universes, bonds, options, mutual funds from
+  [Nasdaq Trader](https://www.nasdaqtrader.com/trader.aspx?id=symboldirdefs) over
+  anonymous FTP with automatic HTTPS fallback and optional TTL disk cache. No API key.
+- **ITCH 5.0 parser** — Nasdaq's TotalView binary feed protocol: 15 message types,
+  length-framed file replay, per-symbol book building and session stats.
+- **Matching-engine orderbook** — full order tracking (insert/cancel/replace/execute
+  by id), price-time priority limit/market matching, aggregated levels.
+- **Book analytics** — spread (abs/bps), mid, microprice, imbalance, depth-within-bps.
 
 ## CLI
 
@@ -25,7 +30,17 @@ nasdaq fetch bonds
 
 # Force a transport
 nasdaq --transport https tickers
+
+# Cache fetched files for an hour (repeat calls are ~50x faster)
+nasdaq --cache ~/.cache/nasdaq tickers
+
+# Replay an ITCH 5.0 session file: per-symbol stats + top-of-book
+nasdaq itch 01302019.NASDAQ_ITCH50 --top 20
+nasdaq itch 01302019.NASDAQ_ITCH50 --symbol AAPL --json
 ```
+
+Sample full-session ITCH files are published by Nasdaq at
+`emi.nasdaq.com/ITCH/Nasdaq ITCH/` (several GB each, gzipped).
 
 ## Library
 
@@ -49,15 +64,32 @@ fn main() -> nasdaq::Result<()> {
 }
 ```
 
-### Orderbook
+### Orderbook + matching engine
 
 ```rust
-use nasdaq::orderbook::{Orderbook, Price, Quantity, Side};
+use nasdaq::orderbook::{analytics, Orderbook, Price, Side};
 
 let mut ob = Orderbook::new();
-ob.add(Side::Bid, Price(9_975), Quantity(50));   // prices in cents
-ob.add(Side::Ask, Price(10_000), Quantity(75));
-assert_eq!(ob.spread(), Some(25));
+ob.insert(101, Side::Bid, Price(9_975), 50)?;   // feed-handler style, by order id
+ob.insert(201, Side::Ask, Price(10_000), 75)?;
+
+let exec = ob.limit(Side::Bid, Price(10_000), 100)?; // crosses: fills 75, rests 25
+assert_eq!(exec.fills[0].qty, 75);
+
+let tob = analytics::top_of_book(&ob);
+println!("mid={:?} microprice={:?} imbalance={:?}", tob.mid, tob.microprice, tob.imbalance);
+```
+
+### ITCH 5.0 replay
+
+```rust
+use nasdaq::itch::BookBuilder;
+use std::{fs::File, io::BufReader};
+
+let mut bb = BookBuilder::for_symbol("AAPL");
+bb.replay(BufReader::new(File::open("session.NASDAQ_ITCH50")?))?;
+let book = bb.book("AAPL").unwrap();
+let stats = &bb.stats["AAPL"];
 ```
 
 ## Tests

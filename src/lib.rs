@@ -4,13 +4,15 @@
 //! `ftp.nasdaqtrader.com`, with an HTTPS fallback to `nasdaqtrader.com`.
 //! Files are pipe-delimited with a `File Creation Time` trailer row.
 
+pub mod itch;
 pub mod orderbook;
 
 use std::collections::BTreeMap;
 use std::io::Cursor;
-use std::path::Path;
-use std::time::Duration;
+use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime};
 
+use serde::{Deserialize, Serialize};
 use suppaftp::FtpStream;
 use thiserror::Error;
 
@@ -86,7 +88,7 @@ impl DirectoryFile {
 }
 
 /// A parsed pipe-delimited directory table: ordered headers + rows.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Table {
     pub headers: Vec<String>,
     pub rows: Vec<Vec<String>>,
@@ -171,6 +173,7 @@ pub enum Transport {
 #[derive(Debug, Clone, Default)]
 pub struct Client {
     transport: Transport,
+    cache: Option<(PathBuf, Duration)>,
 }
 
 impl Client {
@@ -179,12 +182,40 @@ impl Client {
     }
 
     pub fn with_transport(transport: Transport) -> Self {
-        Self { transport }
+        Self { transport, cache: None }
+    }
+
+    /// Cache fetched files under `dir`, reusing them until `ttl` expires.
+    pub fn with_cache(mut self, dir: impl Into<PathBuf>, ttl: Duration) -> Self {
+        self.cache = Some((dir.into(), ttl));
+        self
+    }
+
+    fn cache_lookup(&self, name: &str) -> Option<String> {
+        let (dir, ttl) = self.cache.as_ref()?;
+        let path = dir.join(name);
+        let meta = std::fs::metadata(&path).ok()?;
+        let age = SystemTime::now().duration_since(meta.modified().ok()?).ok()?;
+        if age <= *ttl {
+            std::fs::read_to_string(&path).ok()
+        } else {
+            None
+        }
+    }
+
+    fn cache_store(&self, name: &str, content: &str) {
+        if let Some((dir, _)) = &self.cache {
+            let _ = std::fs::create_dir_all(dir);
+            let _ = std::fs::write(dir.join(name), content);
+        }
     }
 
     /// Fetch and parse a directory file.
     pub fn fetch(&self, file: DirectoryFile) -> Result<Table> {
         let name = file.file_name();
+        if let Some(cached) = self.cache_lookup(name) {
+            return Table::parse(name, &cached);
+        }
         let content = match self.transport {
             Transport::Ftp => self.fetch_ftp(name)?,
             Transport::Https => self.fetch_https(name)?,
@@ -192,6 +223,7 @@ impl Client {
                 .fetch_ftp(name)
                 .or_else(|_| self.fetch_https(name))?,
         };
+        self.cache_store(name, &content);
         Table::parse(name, &content)
     }
 
